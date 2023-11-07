@@ -1,12 +1,12 @@
 // ENV
-require("dotenv").config();
+require('dotenv').config();
 
-const Arduino = require("./classes/Arduino");
-const State = require("./classes/State");
-const Server = require("./classes/Server/Server");
-const Navigator = require("./classes/Navigation/Navigator");
-const Location = require("./classes/Navigation/Location");
-const Logger = require("./classes/Logger");
+const Arduino = require('./classes/Arduino');
+const State = require('./classes/State');
+const Server = require('./classes/Server/Server');
+const Navigator = require('./classes/Navigation/Navigator');
+const Location = require('./classes/Navigation/Location');
+const Logger = require('./classes/Logger');
 
 class Main {
   #tickIntervalMs = 1;
@@ -27,15 +27,15 @@ class Main {
   }
 
   log(...args) {
-    this.logger.log("Main", "standard", ...args);
+    this.logger.log('Main', 'standard', ...args);
   }
 
   warning(...args) {
-    this.logger.log("Main", "warning", ...args);
+    this.logger.log('Main', 'warning', ...args);
   }
 
   error(...args) {
-    this.logger.log("Main", "error", ...args);
+    this.logger.log('Main', 'error', ...args);
   }
 
   async init() {

@@ -1,19 +1,19 @@
-const { Client } = require("@googlemaps/google-maps-services-js");
+const { Client } = require('@googlemaps/google-maps-services-js');
 // import { decode, encode } from "@googlemaps/polyline-codec";
-const gmpc = require("@googlemaps/polyline-codec");
+const gmpc = require('@googlemaps/polyline-codec');
 
 const { decode, encode } = gmpc;
 
-const EventEmitter = require("events");
-const axios = require("axios");
-const Service = require("../Service");
-const Position = require("./Position");
-const fs = require("fs");
+const EventEmitter = require('events');
+const axios = require('axios');
+const Service = require('../Service');
+const Position = require('./Position');
+const fs = require('fs');
 
 // This controls the logic for the turn-by-turn navigation system.
 class Navigator extends Service {
   constructor(mainProcess) {
-    super(mainProcess, "Navigator");
+    super(mainProcess, 'Navigator');
 
     this.mainProcess = mainProcess;
     this.setTickInterval(1000);
@@ -22,6 +22,13 @@ class Navigator extends Service {
   async init() {
     this.log(`Initializing navigation service`);
 
+    // Check for API key
+    if (!process.env.GOOGLE_MAPS_API_KEY) {
+      this.error(
+        `No Google Maps API key found. Please set the GOOGLE_MAPS_API_KEY environment variable.`
+      );
+      process.exit(1);
+    }
     this.client = new Client({});
 
     this.log(`Navigation service initialized`);
@@ -39,7 +46,7 @@ class Navigator extends Service {
     this.log(`Attempting to fetch route (${destination})`);
 
     const result = {
-      status: "UNKNOWN",
+      status: 'UNKNOWN',
       data: null,
     };
 
@@ -49,7 +56,7 @@ class Navigator extends Service {
       destination = new Position(destination).serialize();
     }
 
-    const oPos = this.getState("carPosition");
+    const oPos = this.getState('carPosition');
 
     let response;
 
@@ -58,10 +65,10 @@ class Navigator extends Service {
         params: {
           origin: oPos.serialize(),
           destination,
-          travelMode: "DRIVING",
+          travelMode: 'DRIVING',
           drivingOptions: {
             departureTime: new Date(),
-            trafficModel: "bestguess",
+            trafficModel: 'bestguess',
           },
           key: process.env.GOOGLE_MAPS_API_KEY,
         },
@@ -74,13 +81,13 @@ class Navigator extends Service {
     }
 
     // This doesn't throw an error, but is still a failure.
-    if (["ZERO_RESULTS"].includes(response.data.status)) {
+    if (['ZERO_RESULTS'].includes(response.data.status)) {
       result.status = response.data.status;
       this.warning(`Failed to fetch route (${destination}): ${result.status}`);
       return result;
     }
 
-    result.status = "SUCCESS";
+    result.status = 'SUCCESS';
 
     const route = response.data.routes[0];
     let decodedRoute = this.decodeRoutePolylines(route);
@@ -95,35 +102,75 @@ class Navigator extends Service {
   async getRoutePreview(destination, responseCallback) {
     this.log(`Navigation destination requested (${destination})`);
 
-    let { status = "UNKNOWN", data = null } = await this.getRoute(destination);
+    let { status = 'UNKNOWN', data = null } = await this.getRoute(destination);
 
-    if (status === "SUCCESS") {
+    if (status === 'SUCCESS') {
       this.log(`Navigation destination retrieved (${destination})`);
-      this.updateState("previewRoute", data);
+      this.updateState('previewRoute', data);
     }
 
     responseCallback(status);
   }
 
   clearRoutePreview(responseCallback) {
-    let preview = this.getState("previewRoute");
+    let preview = this.getState('previewRoute');
 
     if (preview === null) {
       this.warning(`Route preview cancelled but preview doesn't exist`);
-      return responseCallback("SUCCESS");
+      return responseCallback('SUCCESS');
     }
 
     let destination = preview?.originalInput;
 
     this.log(`Route preview cancelled (${destination})`);
 
-    this.updateState("previewRoute", null);
+    this.updateState('previewRoute', null);
 
-    return responseCallback("SUCCESS");
+    return responseCallback('SUCCESS');
+  }
+
+  isNavigating() {
+    return this.getState('currentRoute') !== null;
+  }
+
+  nextStep() {
+    // THIS IS AI GENERATED
+    let route = this.getState('currentRoute');
+    let step = this.getState('currentStep');
+
+    let nextStep = route.legs[0].steps.shift();
+
+    if (!nextStep) {
+      this.log(`Route navigation complete`);
+      this.updateState('currentRoute', null);
+      this.updateState('currentStep', null);
+      return;
+    }
+
+    this.updateState('currentStep', nextStep);
   }
 
   async confirmRoutePreview(responseCallback) {
-    return responseCallback("NOT_IMPLIMENTED");
+    let temp = this.getState('previewRoute');
+
+    let destination = temp?.originalInput;
+    let steps = temp?.legs[0].steps;
+
+    if (!steps) {
+      this.warning(`Route navigation confirmed but preview doesn't exist`);
+      return responseCallback('NO_PREVIEW');
+    }
+
+    let firstStep = steps.shift();
+    temp.legs[0].steps = steps;
+
+    this.updateState('currentStep', firstStep);
+    this.updateState('currentRoute', temp);
+    this.updateState('previewRoute', null);
+
+    this.log(`Route navigation confirmed (${destination})`);
+
+    return responseCallback('SUCCESS');
   }
 
   // Decodes polylines into coordinate points to allow the system to track

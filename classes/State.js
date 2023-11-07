@@ -1,14 +1,14 @@
-const { EventEmitter } = require("events");
-const Service = require("./Service");
-const Position = require("./Navigation/Position");
-const Serializable = require("./Serializable");
+const { EventEmitter } = require('events');
+const Service = require('./Service');
+const Position = require('./Navigation/Position');
+const Serializable = require('./Serializable');
 
 // This object stores the state for all constituent devices
 // Asynchronous service
 class State extends Service {
   #tickInterval = null;
   constructor(mainProcess) {
-    super(mainProcess, "State");
+    super(mainProcess, 'State');
     this.mainProcess = mainProcess;
 
     this.stateKeys = [];
@@ -18,16 +18,16 @@ class State extends Service {
 
   registerDefaultStates() {
     // Arduino state
-    this.registerState("resistor33", 0);
-    this.registerState("fakeSpeed", 0);
+    this.registerState('resistor33', 0);
+    this.registerState('fakeSpeed', 0);
 
     // Location state
-    this.registerState("carPosition", new Position(0, 0));
+    this.registerState('carPosition', new Position(0, 0));
 
     // Navigation state
-    this.registerState("previewRoute", null);
-    this.registerState("currentRoute", null);
-    this.registerState("currentStep", null);
+    this.registerState('previewRoute', null);
+    this.registerState('currentRoute', null);
+    this.registerState('currentStep', null);
   }
 
   registerState(key, defaultValue = null) {
@@ -61,7 +61,7 @@ class State extends Service {
       return false;
     }
 
-    if (typeof v1 === "object") {
+    if (typeof v1 === 'object') {
       if (Array.isArray(v1) && Array.isArray(v2)) {
         if (v1.length !== v2.length) {
           return false;
@@ -101,7 +101,7 @@ class State extends Service {
     // if (this.isSameValue(this[key], value)) return;
 
     this[key] = value;
-    this.emit("stateUpdate", key, value, timestamp);
+    this.emit('stateUpdate', key, value, timestamp);
   }
 
   getState(key) {

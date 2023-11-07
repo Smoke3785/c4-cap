@@ -1,7 +1,9 @@
-var five = require("johnny-five");
-const { timeout } = require("../utils");
-const Service = require("./Service");
-const capcon = require("capture-console");
+var five = require('johnny-five');
+const { timeout } = require('../utils');
+const Service = require('./Service');
+const capcon = require('capture-console');
+
+const TEST_WITHOUT_BOARD = true;
 
 // Asynchronous Arduino service
 class Arduino extends Service {
@@ -15,7 +17,7 @@ class Arduino extends Service {
   #potentiometer;
 
   constructor(mainProcess) {
-    super(mainProcess, "Arduino");
+    super(mainProcess, 'Arduino');
     this.mainProcess = mainProcess;
     this.board = null;
 
@@ -34,19 +36,19 @@ class Arduino extends Service {
 
     const fl = () => {
       console.log = t;
-      console.log("");
+      console.log('');
 
       s.forEach((a) => {
-        this.mainProcess.logger.log("johnny-5", "standard", ...a);
+        this.mainProcess.logger.log('johnny-5', 'standard', ...a);
       });
 
-      console.log(">>");
+      console.log('>>');
     };
 
     const connectionPromise = new Promise(async (resolve, reject) => {
       let _board = new five.Board();
 
-      _board.on("ready", () => {
+      _board.on('ready', () => {
         this.board = _board;
         fl();
         resolve();
@@ -55,6 +57,9 @@ class Arduino extends Service {
 
     await timeout(connectionPromise, 3000).catch(async (e) => {
       fl();
+      if (TEST_WITHOUT_BOARD) {
+        return this.warning(`Critical failure to connect to Arduino`);
+      }
       throw new Error(`Critical failure to connect to Arduino`);
     });
 
@@ -102,7 +107,7 @@ class Arduino extends Service {
       let p = (rad + 1) / 2;
       let n = Math.round(1023 * p);
       // this.log(n, { a });
-      this.mainProcess.state.updateState("fakeSpeed", n, new Date().getTime());
+      this.mainProcess.state.updateState('fakeSpeed', n, new Date().getTime());
       if (n === 1023) {
         a = false;
         // Recalc time
@@ -118,7 +123,7 @@ class Arduino extends Service {
 
   listenForDisconnect() {
     if (this.board == null) return;
-    this.board.on("close", (event) => {
+    this.board.on('close', (event) => {
       this.board = null;
       this.log(`Board has disconnected!`);
 
@@ -144,10 +149,10 @@ class Arduino extends Service {
       return;
     }
 
-    var resistor33 = new five.Sensor("A0");
+    var resistor33 = new five.Sensor('A0');
 
     // Scale the sensor's data from 0-1023 to 0-10 and log changes
-    resistor33.on("change", () => {
+    resistor33.on('change', () => {
       if (this.board === null) return;
       let value = resistor33.scaleTo(0, 1023);
 
@@ -156,7 +161,7 @@ class Arduino extends Service {
 
       // this.log(value);
       this.mainProcess.state.updateState(
-        "resistor33",
+        'resistor33',
         value,
         performance.now()
       );
