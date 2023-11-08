@@ -1,6 +1,7 @@
 const { EventEmitter } = require("events");
+const ClassBase = require("./ClassBase");
 
-class Service extends EventEmitter {
+class Service extends ClassBase {
   #tickInterval = null;
   #serviceName = "Generic Service";
 
@@ -53,8 +54,22 @@ class Service extends EventEmitter {
     return this.#tickInterval;
   }
 
+  // Returns the number of ticks run per second
+  getTps() {
+    return 1000 / this.getTickInterval();
+  }
+
+  secondsToTicks(s) {
+    return s * this.getTps();
+  }
+
+  ticksToSeconds(t) {
+    return t / this.getTps();
+  }
+
   shouldTick() {
     if (this.#tickInterval == null) return false;
+    if (this.mainProcess.ticks === 0) return true; // Run on tick 0 no matter what
     if ((this.mainProcess.ticks + 1) % this.#tickInterval) return false;
 
     return true;

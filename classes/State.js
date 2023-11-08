@@ -26,6 +26,7 @@ class State extends Service {
     this.registerState("fakeCarPosition", new Position(41.11038, -78.69994)); // FAKE, TEMPORARY
 
     // Navigation state
+    this.registerState("calculating", false);
     this.registerState("previewRoute", null);
     this.registerState("currentRoute", null);
     this.registerState("currentStep", 0);

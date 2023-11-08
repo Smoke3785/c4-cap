@@ -1,13 +1,10 @@
-class Serializable {
-  constructor() {}
+const ClassBase = require("./ClassBase");
+
+class Serializable extends ClassBase {
+  constructor() {
+    super();
+  }
   serialize() {
-    // let temp = this;
-    // let keys = Object.keys(temp)
-
-    // for(let i = 0; i < keys.length; i++) {
-    //   let object = temp
-    // }
-
     return JSON.stringify(this);
   }
   fromSerialized(serialized) {

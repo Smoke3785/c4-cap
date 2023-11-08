@@ -44,6 +44,9 @@ class Route extends Serializable {
     this.originalInput = routeData.originalInput;
 
     this.steps = _route.steps.map((step, idx) => new Step(step, idx));
+
+    this.arrived = _route?.arrived || false;
+    this.beginningTimestamp = null;
   }
   fromSerialized(routeData) {}
 

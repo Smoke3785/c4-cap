@@ -7,7 +7,8 @@ const typeColors = {
   main: "blue",
   warning: "yellow",
   error: "red",
-  other: "pink",
+  other: "magenta",
+  notify: "magenta",
   service: "green",
 };
 
@@ -15,6 +16,7 @@ const typePrefixes = {
   warning: " Warning:",
   error: "Error:",
   standard: "",
+  notify: "",
 };
 
 class Logger extends EventEmitter {
@@ -46,6 +48,10 @@ class Logger extends EventEmitter {
 
     let t = typeColors[type];
     let s = "Main" ? typeColors.main : typeColors.service;
+
+    if (!chalk[t]) {
+      throw new Error(`No chalk color of key ${t}`);
+    }
 
     return [s, t];
   }

@@ -112,6 +112,7 @@ class Server extends Service {
   listenForClientComms() {
     this.io.on("connection", (socket) => {
       this.log("Client device connected");
+      this.sendInitialState();
 
       // Event handlers
       socket.on("requestRoutePreview", (destination, responseCallback) => {
@@ -214,25 +215,30 @@ class Server extends Service {
 
   sendInitialState() {
     let registry = this.main().state.stateKeys;
+    this.log(`Sending initial state to new client (${registry.length} states)`);
     registry.forEach((key) => {
       let value = this.getState(key);
-
-      this.io.emit("stateUpdate", key, value);
+      // console.log(key, value);
+      this.emitStateUpdate(key, value);
     });
+  }
+
+  emitStateUpdate(key, value, timestamp = Date.now()) {
+    let temp;
+
+    // Serialize data
+    if (value instanceof Serializable) {
+      temp = value.serialize();
+    } else {
+      temp = value;
+    }
+
+    this.io.emit("stateUpdate", key, temp, timestamp);
   }
 
   listenForStateChange() {
     this.mainProcess.state.on("stateUpdate", (key, value, timestamp) => {
-      let temp;
-
-      // Serialize data
-      if (value instanceof Serializable) {
-        temp = value.serialize();
-      } else {
-        temp = value;
-      }
-
-      this.io.emit("stateUpdate", key, temp, timestamp);
+      this.emitStateUpdate(key, value);
     });
   }
 }

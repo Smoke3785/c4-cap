@@ -98,8 +98,26 @@ class Position extends Serializable {
     return { lat: this.getLatitude(), lng: this.getLongitude() };
   }
 
+  // NOTE - this is also the Haversine formula, I must refactor.
   distanceTo(pos2) {
-    throw new Error("NOT_IMPLIMENTED");
+    let [[lat1, lng1], [lat2, lng2]] = [this.getVec2(), pos2.getVec2()];
+
+    const lat1Rad = lat1 * this.constants.DEGREES_TO_RADIANS;
+    const lng1Rad = lng1 * this.constants.DEGREES_TO_RADIANS;
+    const lat2Rad = lat2 * this.constants.DEGREES_TO_RADIANS;
+    const lng2Rad = lng2 * this.constants.DEGREES_TO_RADIANS;
+
+    const dLat = lat2Rad - lat1Rad;
+    const dLng = lng2Rad - lng1Rad;
+
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1Rad) * Math.cos(lat2Rad) * Math.sin(dLng / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    const distanceMeters = this.constants.EARTH_RADIUS_METERS * c;
+
+    return distanceMeters;
   }
 
   distanceToPolyline(polyline) {
@@ -112,6 +130,12 @@ class Position extends Serializable {
 
   distanceToLine([[x1, y1], [x2, y2]]) {
     const [x, y] = this.getVec2();
+
+    // If the line doesn't have a length, the function won't work.
+    // If the start and end of the line are the same, simply return the distance from the point.
+    if (x1 === x2 && y1 === y2) {
+      return this.haversineDistanceTo(new Position(x1, x2));
+    }
 
     // Calculate the vector from the start of the line to the given point
     const v1 = { x: x - x1, y: y - y1 };
@@ -133,11 +157,7 @@ class Position extends Serializable {
     const closestY = y1 + t * v2.y;
 
     // Calculate the distance between the given point and the closest point
-    // const distance = Math.sqrt((x - closestX) ** 2 + (y - closestY) ** 2);
-
-    const distance = new Position(x, y).haversineDistanceTo(
-      new Position(closestX, closestY)
-    );
+    const distance = this.haversineDistanceTo(new Position(closestX, closestY));
 
     return distance;
   }
@@ -146,6 +166,40 @@ class Position extends Serializable {
     let distance = vectorMath.haversineDistance(this.getVec2(), pos2.getVec2());
 
     return distance;
+  }
+
+  // NOTE - This doesn't really work correctly.
+  interpolateCoordinates(pos2, spacingMeters = 10) {
+    let [[lat1, lng1], [lat2, lng2]] = [this.getVec2(), pos2.getVec2()];
+
+    // Calculate the initial and final azimuth
+    const dLat = lat2 - lat1;
+    const dLng = lng2 - lng1;
+    const distance = this.haversineDistanceTo(pos2);
+
+    const coordinates = [this];
+
+    let distanceAlongPath = spacingMeters;
+
+    while (distanceAlongPath < distance) {
+      const lat =
+        lat1 +
+        (distanceAlongPath / this.constants.EARTH_RADIUS_METERS) *
+          this.constants.RADIANS_TO_DEGREES;
+      const lng =
+        lng1 +
+        ((distanceAlongPath / this.constants.EARTH_RADIUS_METERS) *
+          this.constants.RADIANS_TO_DEGREES) /
+          Math.cos(lat1 * this.constants.DEGREES_TO_RADIANS);
+
+      coordinates.push(new Position(lat, lng));
+
+      distanceAlongPath += spacingMeters;
+    }
+
+    coordinates[coordinates.length - 1] = pos2;
+
+    return coordinates;
   }
 }
 

@@ -16,13 +16,19 @@ const { polylineToLines } = require("../../functions/helpers");
 // This controls the logic for the turn-by-turn navigation system.
 class Navigator extends Service {
   #pointDetectionRange = 10; // meters
-  #recalculationGracePeriod = 5; // seconds
+  #destinationPointDetectionRange = 25; // meters
+  #recalculationRange = 50; // meters
+  #recalculationGracePeriod; // seconds
+  #stepLookAhead = 5;
+  #navTickRunning;
+  #verboseLogging = false;
 
   constructor(mainProcess) {
     super(mainProcess, "Navigator");
 
     this.mainProcess = mainProcess;
     this.setTickInterval(10);
+    this.#recalculationGracePeriod = this.secondsToTicks(5);
 
     this.navTickRunning = false;
 
@@ -58,6 +64,8 @@ class Navigator extends Service {
   }
 
   async recalculate() {
+    this.updateState("calculating", true);
+
     let destination = this.getState("currentRoute");
 
     this.log(`Recalculating route to (${destination.originalInput})`);
@@ -77,112 +85,218 @@ class Navigator extends Service {
     this.updateState("currentStep", 0);
     this.updateState("nextPoint", 0);
 
+    // NOTE: Must calculate the car's distance from the entry point of this route
+    // so that if we detect that the car has deviated dramatically from the new course
+    // we can recalculate.
+    // this.distanceFromFirstPointOnCalcluation;
+
+    this.updateState("calculating", false);
+
     this.hasReachedRouteSinceCalculation = false;
   }
 
-  navigationTick() {
-    if (this.navTickRunning) return;
-    this.navTickRunning = true;
-    let nextPointCoordinates = this.getNextPointCoordinates();
-    let carPosition = this.getState("carPosition");
-
-    // Calculate distance from road
-    let distanceToRoad = carPosition.distanceToPolyline(
-      polylineToLines(this.getCurrentStepObject().points)
-    );
-
-    // console.log("DISTANCE TO ROAD" + distanceToRoad);
-
-    if (distanceToRoad > 70 && this.hasReachedRouteSinceCalculation === true) {
-      if (
-        this.ticksDeviatedFromRoad <
-        this.#recalculationGracePeriod * (this.getTickInterval() / 1000)
-      ) {
-        // this.recalculate();
-        this.navTickRunning = false;
-        this.ticksDeviatedFromRoad = 0;
-        return;
-      } else {
-        console.log(`Deviated from road for ${this.ticksDeviatedFromRoad}`);
-        tick++;
-        this.navTickRunning = false;
-        return;
-      }
+  set navTickRunning(v) {
+    if (!this.#verboseLogging) {
+      return (this.#navTickRunning = v);
+    }
+    if (v === true) {
+      this.navTickStart = performance.now();
+    } else {
+      console.log(
+        `Finished navTick calculations in ${parseFloat(
+          performance.now() - this.navTickStart
+        ).toFixed(2)}ms`
+      );
     }
 
+    this.#navTickRunning = v;
+  }
+
+  get navTickRunning() {
+    return this.#navTickRunning;
+  }
+
+  get currentRoute() {
+    return this.getState("currentRoute");
+  }
+
+  get currentStep() {
+    return this.getState("currentStep");
+  }
+
+  get currentStepObject() {
+    return this.currentRoute.steps[this.currentStep];
+  }
+
+  get nextPoint() {
+    return this.getState("nextPoint");
+  }
+
+  get nextPointCoordinates() {
+    return this.currentStepObject.points[this.nextPoint];
+  }
+
+  get lastStep() {
+    return this.currentRoute.steps.length - 1;
+  }
+
+  get lastStepObject() {
+    return this.currentRoute.steps[this.lastStep];
+  }
+
+  get lastPoint() {
+    return this.lastStepObject.points.length - 1;
+  }
+
+  get lastPointObject() {
+    return this.lastStepObject.points[this.lastPoint];
+  }
+
+  get distanceToDestination() {
+    return this.carPosition.haversineDistanceTo(this.lastPointObject);
+  }
+
+  get atDestination() {
+    return this.currentRoute.arrived === true;
+  }
+
+  onArrival() {
+    this.log(
+      `Arrived at destination (${this.currentRoute.originalInput}) in ${
+        Date.now() - this.currentRoute.beginningTimestamp
+      }ms`
+    );
+  }
+
+  navigationTick() {
+    // Lockout multiple navigation ticks from running at once - is this even possible?
+    if (this.navTickRunning) return;
+    // Don't try navigating while recalculating
+    if (this.isCalculating()) return;
+    // Don't bother navigating once already arrived. Client will need to clear navigation. (?)
+    if (this.atDestination) return;
+
+    this.navTickRunning = true;
+
+    let nextPointCoordinates = this.nextPointCoordinates;
+    let carPosition = this.getState("carPosition");
+
+    // First, calculate if target is at his destination.
+    if (this.distanceToDestination <= this.#destinationPointDetectionRange) {
+      let route = this.currentRoute;
+      route.arrived = true;
+      this.updateState("currentRoute", route);
+      this.navTickRunning = false;
+      this.onArrival();
+      return;
+    }
+
+    // Calculate distance from road
+    let distanceToRoad = this.getDistanceToRoad();
+
+    // NOTE: Must calculate distance to final destination as well!
+    // Check to see if the car is within 20m of the route
     if (distanceToRoad < 20 && this.hasReachedRouteSinceCalculation === false) {
-      console.log(`CAR HAS REACHED ROAD!`);
+      // If the car is within 20m of a new route for the first time, set hasReachedRouteSinceCalculation to true.
+      this.log(`Car has reached navigation route`);
       this.hasReachedRouteSinceCalculation = true;
     }
 
-    // Check if car has reached next point
-    if (
-      nextPointCoordinates.haversineDistanceTo(carPosition) <
-      this.#pointDetectionRange
-    ) {
-      this.log(`VEHICLE HAS HIT POINT ${nextPointCoordinates.getVec2()}`);
-      if (this.atLastPoint()) {
-        this.advanceStep();
-      } else {
-        this.advancePoint();
-      }
+    // If the driver hasn't gotten within 20m of the route, check to see if he is now
+    if (this.hasReachedRouteSinceCalculation === false) {
       this.navTickRunning = false;
       return;
     }
 
-    let nearestPoint = null;
-
-    // console.log("failed to hit next point, checking further along this step");
-
-    // If the car hasn't reached the next point, search the remaining points along the current step.
-    let remaining = this.getRemainingPoints();
-
-    for (let i = 0; i < remaining.length; i++) {
-      let p = remaining[i];
-      let _distance = p.haversineDistanceTo(carPosition);
-
-      if (_distance < this.#pointDetectionRange) {
-        if (this.isLastPoint(p.idx)) {
-          this.advanceStep();
-        } else {
-          this.setPoint(p.idx);
-        }
+    // If the distance to the current step or next step is > 70
+    // NOTE - THIS SHOULD ALSO CHECK TO SEE IF THE CAR IS DRIVING BACKWARDS
+    // Case: the car is within 70m of the current *step* but getting further away from the next *point*
+    // this.isCarDeviatingFromPath();
+    if (distanceToRoad > this.#recalculationRange) {
+      // If the car has been this far from the road for n ticks, recalculate
+      if (this.ticksDeviatedFromRoad >= this.#recalculationGracePeriod) {
+        this.recalculate();
         this.navTickRunning = false;
+        this.ticksDeviatedFromRoad = 0;
         return;
+      }
+
+      // Otherwise, increment ticksDeviatedFromRoad;
+      let timeRemaining = this.ticksToSeconds(
+        this.#recalculationGracePeriod - this.ticksDeviatedFromRoad
+      );
+
+      if (!(timeRemaining % 1)) {
+        this.warning(
+          `Car is more than ${
+            this.#recalculationRange
+          }m from path. Recalculating in ${timeRemaining}s`
+        );
+      }
+
+      this.ticksDeviatedFromRoad++;
+      this.navTickRunning = false;
+      return;
+    } else {
+      // If the car is within 70m, reset the recalculation timer
+      this.ticksDeviatedFromRoad = 0;
+    }
+
+    // Iterate over points in the current step. If the vehicle has reached that point, set the next point.
+    for (let point of this.getCurrentStepObject().points) {
+      if (point.haversineDistanceTo(carPosition) < this.#pointDetectionRange) {
+        if (point.idx !== this.getState("nextPoint") - 1) {
+          this.log(
+            `VEHICLE HAS HIT POINT ON CURRENT STEP ${nextPointCoordinates.getVec2()}`
+          );
+          this.setPoint(point.idx + 1);
+        }
+        break;
       }
     }
 
-    // If the car hasn't reached any point on the current step, check all steps within 1000m next step.
-    let nearbySteps = this.getStepsBeginningWithin(1000);
+    // Assuming there were no points within detectionRange in the current step,
+    // check the next step. If the car is determined to be along the next step,
+    // set the currentStep *and* the currentPoint
+    stepLoop: for (let i = 1; i < this.#stepLookAhead + 1; i++) {
+      let nextStepIndex = this.getState("currentStep") + i;
+      if (nextStepIndex >= this.getState("currentRoute").steps.length) {
+        break;
+      }
+      let nextStep = this.getStepObject(nextStepIndex);
 
-    // for (let nearbyStep of nearbySteps) {
-    //   for (let point of nearbyStep.points) {
-    //     if (
-    //       point.haversineDistanceTo(carPosition) < this.#pointDetectionRange
-    //     ) {
-    //       this.updateState("currentStep", nearbyStep.idx);
-    //       this.updateState("nextPoint", point.idx);
-    //       this.navTickRunning = false;
-    //       return;
-    //     }
-    //   }
-    // }
-
-    // console.log(nextSteps);
+      for (let point of nextStep.points) {
+        if (
+          point.haversineDistanceTo(carPosition) < this.#pointDetectionRange
+        ) {
+          this.log(`VEHICLE HAS HIT POINT ON NEXT STEP ${point.getVec2()}`);
+          this.setStep(nextStep.idx);
+          this.setPoint(point.idx + 1);
+          break stepLoop;
+        }
+      }
+    }
 
     this.navTickRunning = false;
-    // console.log("failed to hit any remaining points, ");
   }
 
   advancePoint() {
+    throw new Error("DEPRECATED");
     this.updateState("nextPoint", this.getState("nextPoint") + 1);
     return;
   }
 
+  // NOTE: This will have to check to see if the car is at the last point on a step.
   setPoint(idx) {
-    console.log("setting point");
+    // console.log(`setting point ${idx}`);
     this.updateState("nextPoint", idx);
     return;
+  }
+
+  // NOTE: This will have to check to see if the car is at the last step on a route.
+  setStep(idx) {
+    // console.log(`setting step ${idx}`);
+    this.updateState("currentStep", idx);
   }
 
   advanceStep() {
@@ -201,6 +315,10 @@ class Navigator extends Service {
     let step = this.getCurrentStepObject();
 
     return step.points.slice(this.getState("nextPoint"), step.points.length);
+  }
+
+  isCalculating() {
+    return this.getState("calculating");
   }
 
   getStepsBeginningWithin(range) {
@@ -283,20 +401,20 @@ class Navigator extends Service {
 
   async getRoutePreview(destination, responseCallback) {
     this.log(`Navigation destination requested (${destination})`);
-
+    this.updateState("calculating", true);
     let { status = "UNKNOWN", data = null } = await this.getRoute(destination);
 
     if (status !== "SUCCESS") {
+      this.updateState("calculating", false);
       return responseCallback(status);
     }
 
     let route = new Route(data);
 
-    // console.log(route);
-
     this.log(`Navigation destination retrieved (${destination})`);
     this.updateState("previewRoute", route);
 
+    this.updateState("calculating", false);
     responseCallback(status);
   }
 
@@ -322,24 +440,90 @@ class Navigator extends Service {
   }
 
   getCurrentStepObject() {
-    return this.getState("currentRoute").steps[this.getState("currentStep")];
+    return this.getStepObject(this.getState("currentStep"));
   }
 
+  getNextStepObject() {
+    return this.getStepObject(this.getState("currentStep") + 1);
+  }
+
+  getStepObject(idx) {
+    if (this.falseNotZero(idx)) {
+      throw new Error(`Attempted to retrieve stepObject without idx: ${idx}`);
+    }
+
+    let step = this.getState("currentRoute").steps[idx];
+    if (!step) {
+      throw new Error(`Tried to access non-existant step ${idx}`);
+    }
+
+    return step;
+  }
+
+  // NOTE - There may be some edge cases where this does a funny
   getNextPointCoordinates() {
     let currentRoute = this.getState("currentRoute");
     let stepIndex = this.getState("currentStep");
     let nextPointIndex = this.getState("nextPoint");
 
-    if ([stepIndex, nextPointIndex, currentRoute].includes(null)) return null;
+    // console.log({ currentRoute, nextPointIndex, currentRoute });
+    if (this.hasNull(stepIndex, nextPointIndex, currentRoute)) return null;
 
     let nextPointCoordinates =
       currentRoute.steps[stepIndex].points[nextPointIndex];
+    // console.log({ nextPointCoordinates });
 
     return nextPointCoordinates;
   }
 
+  // This returns the distance from the nearest point on the currentStep and the nextStep
+  getDistanceToRoad(lookAhead = this.#stepLookAhead) {
+    let distances = [];
+
+    let currentStepIdx = this.getState("currentStep");
+
+    for (let i = 0; i < lookAhead + 1; i++) {
+      let stepIdx = currentStepIdx + i;
+      if (stepIdx >= this.getState("currentRoute").steps.length) {
+        break;
+      }
+      distances.push(this.getDistanceToStep(stepIdx));
+    }
+
+    return Math.min(...distances);
+  }
+
+  getDistanceToStep(idx) {
+    let step = this.getStepObject(idx);
+    let polyline = polylineToLines(step.points);
+
+    let distance = this.carPosition.distanceToPolyline(polyline);
+
+    return distance;
+  }
+
+  // NOTE: I'm toying with using this syntax for getters.
+  // NOTE: I may create getters for all relevant states.
+  get carPosition() {
+    return this.getState("carPosition");
+  }
+
+  getDistanceToCurrentStep() {
+    return this.carPosition.distanceToPolyline(
+      polylineToLines(this.getCurrentStepObject().points)
+    );
+  }
+
+  getDistanceToNextStep() {
+    return this.carPosition.distanceToPolyline(
+      polylineToLines(this.getNextStepObject().points)
+    );
+  }
+
   async confirmRoutePreview(responseCallback) {
     let temp = this.getState("previewRoute");
+
+    temp.beginningTimestamp = Date.now();
 
     if (!temp) {
       this.warning(`Route navigation confirmed but preview doesn't exist`);
@@ -376,13 +560,23 @@ class Navigator extends Service {
     let legs = route.legs.map((leg) => {
       return {
         ...leg,
-        steps: leg.steps.map((step) => {
-          let pathArray = decode(step.polyline.points);
+        steps: leg.steps.map((step, idx) => {
+          let path = decode(step.polyline.points);
+
+          // Add the car's current position as the first point in the first path
+          if (idx === 0) {
+            let interpolatedCoordinates =
+              this.carPosition.interpolateCoordinates(new Position(path[0]));
+
+            path = [
+              ...interpolatedCoordinates.map((i) => i.getVec2()),
+              ...path,
+            ];
+          }
 
           return {
             ...step,
-            path: pathArray,
-            latLng: dpa(pathArray),
+            path,
           };
         }),
       };

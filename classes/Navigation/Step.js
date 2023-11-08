@@ -44,7 +44,7 @@ class Step extends Serializable {
 
     let distances = lines.map(([p1, p2]) => p1.haversineDistanceTo(p2));
 
-    return distances;
+    return Math.max(...distances);
   }
 
   serialize() {

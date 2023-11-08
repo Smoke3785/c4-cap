@@ -64,6 +64,10 @@ function projection(_a, _b) {
 function haversineDistance(_a, _b, unit = "m") {
   let [[lat1, lon1], [lat2, lon2]] = convert(_a, _b);
 
+  if (lat1 === lat2 && lon1 === lon2) {
+    return 0; // The two points are the same, so the distance is zero.
+  }
+
   const earthRadiusMiles = 3959; // Earth's radius in miles
   const degreesToRadians = Math.PI / 180;
 
@@ -94,13 +98,6 @@ function haversineDistance(_a, _b, unit = "m") {
 
   if (unit == "m") return distanceMeters;
   if (unit == "ft") return distanceFeet;
-
-  // return distanceMiles;
-
-  // // Convert distance from miles to feet
-  // const distanceFeet = distanceMiles * 5280;
-
-  // return distanceFeet;
 }
 
 const vectorMath = {
