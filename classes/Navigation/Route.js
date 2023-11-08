@@ -47,6 +47,7 @@ class Route extends Serializable {
 
     this.arrived = _route?.arrived || false;
     this.beginningTimestamp = null;
+    this.arrivalTime = null;
   }
   fromSerialized(routeData) {}
 

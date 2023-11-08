@@ -161,9 +161,14 @@ class Navigator extends Service {
   }
 
   onArrival() {
+    let route = this.currentRoute;
+    route.arrived = true;
+    route.arrivalTime = Date.now();
+
+    this.updateState("currentRoute", route);
     this.log(
       `Arrived at destination (${this.currentRoute.originalInput}) in ${
-        Date.now() - this.currentRoute.beginningTimestamp
+        this.currentRoute.arrivalTime - this.currentRoute.beginningTimestamp
       }ms`
     );
   }
@@ -183,9 +188,6 @@ class Navigator extends Service {
 
     // First, calculate if target is at his destination.
     if (this.distanceToDestination <= this.#destinationPointDetectionRange) {
-      let route = this.currentRoute;
-      route.arrived = true;
-      this.updateState("currentRoute", route);
       this.navTickRunning = false;
       this.onArrival();
       return;
@@ -433,6 +435,25 @@ class Navigator extends Service {
     this.updateState("previewRoute", null);
 
     return responseCallback("SUCCESS");
+  }
+
+  clearCurrentRoute(responseCallback) {
+    let route = this.getState("currentRoute");
+
+    if (route === null) {
+      this.warning(`Current route cleared but route doesn't exist`);
+      return responseCallback("SUCCESS");
+    }
+
+    let destination = route?.originalInput;
+
+    this.log(`Route preview cancelled (${destination})`);
+
+    this.updateState("currentRoute", null);
+    this.updateState("currentStep", 0);
+    this.updateState("nextPoint", 0);
+
+    responseCallback("SUCCESS");
   }
 
   isNavigating() {

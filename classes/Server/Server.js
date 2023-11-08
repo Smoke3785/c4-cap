@@ -130,35 +130,16 @@ class Server extends Service {
         this.mainProcess.navigator.confirmRoutePreview(responseCallback);
       });
 
+      socket.on("clearCurrentRoute", (responseCallback) => {
+        this.mainProcess.navigator.clearCurrentRoute(responseCallback);
+      });
+
       socket.on("requestStateRefresh", () => {
         this.sendInitialState();
       });
 
       const sc = 5;
 
-      // socket.on("moveForwardFake", (responseCallback) => {
-      //   if (this.faking) responseCallback("FAKING");
-      //   this.faking = true;
-      //   console.log("Fake requested");
-
-      //   let currentPosition = this.getState("fakeCarPosition");
-      //   let nextPoint = this.mainProcess.navigator.getNextPointCoordinates();
-
-      //   let fakeCoordinate = calculatePointNearerToDestination(
-      //     currentPosition.getVec2(),
-      //     nextPoint.getVec2(),
-      //     0.0000000001
-      //   );
-
-      //   this.updateState("fakeCarPosition", new Position(fakeCoordinate));
-
-      //   console.log(fakeCoordinate);
-
-      //   responseCallback("SUCCESS");
-      //   this.faking = false;
-      // });
-
-      // Disconnect
       socket.on("up", (responseCallback) => {
         let currentPosition = this.getState("fakeCarPosition");
         currentPosition.adjustLatitude(roughMeterToLatLng(1 * sc));
@@ -182,31 +163,10 @@ class Server extends Service {
         currentPosition.adjustLongitude(roughMeterToLatLng(1 * sc));
         this.updateState("fakeCarPosition", currentPosition);
 
-        // let route = this.getState("currentRoute");
-
-        // let allPoints = route.steps.map((step) => step.points).flat(1);
-        // let allLines = polylineToLines(allPoints);
-        // let distances = allLines.map(([p1, p2]) =>
-        //   parseFloat(p1.haversineDistanceTo(p2))
-        // );
-        // let longestDistance = Math.max(...distances);
-        // let averageDistance =
-        //   distances.reduce((a, b) => a + b, 0) / distances.length;
-        // let distancesExceedingTen = distances.filter((d) => d > 10).length;
-        // let distancesExceedingFifteen = distances.filter((d) => d > 15).length;
-        // let distancesExceedingTwenty = distances.filter((d) => d > 20).length;
-
-        // console.log(
-        //   distancesExceedingTen,
-        //   distancesExceedingFifteen,
-        //   distancesExceedingTwenty,
-        //   longestDistance,
-        //   averageDistance
-        // );
-
         responseCallback("SUCCESS");
       });
 
+      // Disconnect
       socket.on("disconnect", () => {
         this.log("Client device disconnected");
       });
