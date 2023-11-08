@@ -48,6 +48,7 @@ class Service extends EventEmitter {
   setTickInterval(n) {
     this.#tickInterval = n;
   }
+
   getTickInterval() {
     return this.#tickInterval;
   }

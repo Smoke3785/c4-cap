@@ -5,6 +5,9 @@ const Service = require("../Service");
 // the vehicle and updates the server state to match.
 
 // I will need to integrate a compass into this as well
+
+const TESTING = true;
+
 class Location extends Service {
   constructor(mainProcess) {
     super(mainProcess, "Location");
@@ -19,20 +22,29 @@ class Location extends Service {
 
   async tick() {
     if (!this.shouldTick()) return;
+    if (TESTING) {
+      this.updatePositionState(this.getState("fakeCarPosition"));
+      return;
+    }
+
     // Get current value from GPS module
-    let [lat, long] = this.getPositionFromGPS();
-    this.updatePositionState(lat, long);
+    let [lat, lng] = this.getPositionFromGPS();
+    this.updatePositionState(lat, lng);
   }
 
-  updatePositionState(lat, long) {
-    this.updateState("carPosition", new Position(lat, long));
+  updatePositionState(lat, lng) {
+    if (lat instanceof Position) {
+      this.updateState("carPosition", lat);
+      return;
+    }
+    this.updateState("carPosition", new Position(lat, lng));
   }
 
   getPositionFromGPS() {
     let lat = 41.11038;
-    let long = -78.69994;
+    let lng = -78.69994;
 
-    return [lat, long];
+    return [lat, lng];
   }
 }
 
